@@ -1,6 +1,8 @@
+# app.py — вебхук-обёртка для Render (Flask 3 совместимо)
 import os
 import telebot
 from flask import Flask, request, abort
+from telebot import types
 
 TOKEN = os.getenv("TOKEN")
 if not TOKEN:
@@ -13,7 +15,6 @@ bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
 app = Flask(__name__)
 
 # --- клавиатуры ---
-from telebot import types
 def main_kb():
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True, is_persistent=True)
     kb.row(types.KeyboardButton("🎵 Прислать трек"))
@@ -52,28 +53,21 @@ def back(m):
 def fallback(m):
     bot.send_message(m.chat.id, "Жми кнопку ниже 😉", reply_markup=main_kb())
 
-# --- webhook endpoints ---
-@app.route("/", methods=["GET"])
+# --- Flask routes ---
+@app.get("/")
 def index():
     return "ok", 200
 
-@app.route(f"/{TOKEN}", methods=["POST"])
+@app.post(f"/{TOKEN}")
 def receive_update():
     if request.headers.get("content-type") == "application/json":
         update = request.get_data().decode("utf-8")
         bot.process_new_updates([telebot.types.Update.de_json(update)])
         return "ok", 200
-    else:
-        abort(403)
+    abort(403)
 
-# Установка webhook при старте (используем переменную окружения WEBHOOK_URL)
-@app.before_first_request
-def setup_webhook():
-    webhook_url = os.getenv("WEBHOOK_URL")  # например, https://tg-bot-xxxx.onrender.com/<TOKEN>
-    if webhook_url:
-        bot.remove_webhook()
-        bot.set_webhook(url=webhook_url)
-        print("Webhook set to:", webhook_url)
-
-# gunicorn будет искать переменную app
-# запускать так: gunicorn app:app
+# Устанавливаем вебхук один раз при старте процесса gunicorn
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+if WEBHOOK_URL:
+    try:
+        bot
